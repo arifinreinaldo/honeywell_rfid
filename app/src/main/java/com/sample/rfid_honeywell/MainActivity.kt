@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.honeywell.rfidservice.TriggerMode
 import com.sample.rfid_honeywell.helper.BarcodeHelper
 import com.sample.rfid_honeywell.helper.HoneywellRfidHelper
 import com.sample.rfid_honeywell.ui.theme.RFIDHoneywellTheme
@@ -163,7 +164,9 @@ fun MainScreen(rfidHelper: HoneywellRfidHelper, barcodeHelper: BarcodeHelper) {
                 ) {
                     Button(
                         onClick = { scanMode = ScanMode.RFID },
-                        modifier = Modifier.weight(1f).padding(4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(4.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (scanMode == ScanMode.RFID)
                                 MaterialTheme.colorScheme.primary
@@ -176,7 +179,9 @@ fun MainScreen(rfidHelper: HoneywellRfidHelper, barcodeHelper: BarcodeHelper) {
 
                     Button(
                         onClick = { scanMode = ScanMode.BARCODE },
-                        modifier = Modifier.weight(1f).padding(4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(4.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (scanMode == ScanMode.BARCODE)
                                 MaterialTheme.colorScheme.primary
@@ -207,6 +212,7 @@ enum class ScanMode {
 
 @Composable
 fun RfidScreen(rfidHelper: HoneywellRfidHelper) {
+    var triggerMode by remember { mutableStateOf(TriggerMode.RFID) }
     var connectionState by remember { mutableStateOf(HoneywellRfidHelper.ConnectionState.DISCONNECTED) }
     var isScanning by remember { mutableStateOf(false) }
     var tagList by remember { mutableStateOf<List<HoneywellRfidHelper.TagInfo>>(emptyList()) }
@@ -252,212 +258,254 @@ fun RfidScreen(rfidHelper: HoneywellRfidHelper) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
 
-            // Status
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = when (connectionState) {
-                        HoneywellRfidHelper.ConnectionState.READER_READY -> MaterialTheme.colorScheme.primaryContainer
-                        HoneywellRfidHelper.ConnectionState.CONNECTED -> MaterialTheme.colorScheme.secondaryContainer
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    }
-                )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Status: $statusMessage")
-                    Text("Connection: ${connectionState.name}")
-                    Text("Mode: ${if (inventoryModeEnabled) "Inventory (Trigger)" else "Manual"}")
-                    Text("Scanning: ${if (isScanning) "Active" else "Stopped"}")
-                    Text("Tags found: ${tagList.size}")
+        // Status
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = when (connectionState) {
+                    HoneywellRfidHelper.ConnectionState.READER_READY -> MaterialTheme.colorScheme.primaryContainer
+                    HoneywellRfidHelper.ConnectionState.CONNECTED -> MaterialTheme.colorScheme.secondaryContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant
                 }
-            }
-
-            // Bluetooth address input (for Bluetooth connection)
-            OutlinedTextField(
-                value = bluetoothAddress,
-                onValueChange = { bluetoothAddress = it },
-                label = { Text("Bluetooth Address (optional)") },
-                placeholder = { Text("e.g., 0C:23:69:19:96:46") },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = connectionState == HoneywellRfidHelper.ConnectionState.DISCONNECTED
             )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Status: $statusMessage")
+                Text("Connection: ${connectionState.name}")
+                Text("Mode: ${if (inventoryModeEnabled) "Inventory (Trigger)" else "Manual"}")
+                Text("Scanning: ${if (isScanning) "Active" else "Stopped"}")
+                Text("Tags found: ${tagList.size}")
+            }
+        }
 
-            // Inventory Mode Toggle
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (inventoryModeEnabled)
-                        MaterialTheme.colorScheme.tertiaryContainer
-                    else
-                        MaterialTheme.colorScheme.surfaceVariant
-                )
+        // Bluetooth address input (for Bluetooth connection)
+        OutlinedTextField(
+            value = bluetoothAddress,
+            onValueChange = { bluetoothAddress = it },
+            label = { Text("Bluetooth Address (optional)") },
+            placeholder = { Text("e.g., 0C:23:69:19:96:46") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = connectionState == HoneywellRfidHelper.ConnectionState.DISCONNECTED
+        )
+
+        // Inventory Mode Toggle
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (inventoryModeEnabled)
+                    MaterialTheme.colorScheme.tertiaryContainer
+                else
+                    MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Inventory Mode",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = if (inventoryModeEnabled)
-                                "Use trigger key to scan"
-                            else
-                                "Use buttons to scan",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    Switch(
-                        checked = inventoryModeEnabled,
-                        onCheckedChange = {
-                            inventoryModeEnabled = it
-                            if (it) {
-                                statusMessage = "Inventory mode: Press trigger to scan"
-                            } else {
-                                statusMessage = "Manual mode: Use buttons to scan"
-                                isScanning = false
-                            }
-                        },
-                        enabled = connectionState == HoneywellRfidHelper.ConnectionState.READER_READY
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Inventory Mode",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = if (inventoryModeEnabled)
+                            "Use trigger key to scan"
+                        else
+                            "Use buttons to scan",
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
+                Switch(
+                    checked = inventoryModeEnabled,
+                    onCheckedChange = {
+                        inventoryModeEnabled = it
+                        if (it) {
+                            statusMessage = "Inventory mode: Press trigger to scan"
+                        } else {
+                            statusMessage = "Manual mode: Use buttons to scan"
+                            isScanning = false
+                        }
+                    },
+                    enabled = connectionState == HoneywellRfidHelper.ConnectionState.READER_READY
+                )
             }
+        }
 
-            // Connect Button
+        // Inventory Mode Toggle
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (inventoryModeEnabled)
+                    MaterialTheme.colorScheme.tertiaryContainer
+                else
+                    MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Trigger Mode",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = if (triggerMode == TriggerMode.RFID)
+                            "RFID"
+                        else
+                            "BARCODE",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = triggerMode == TriggerMode.RFID,
+                    onCheckedChange = {
+                        var newState =
+                            if (triggerMode == TriggerMode.RFID) TriggerMode.BARCODE else TriggerMode.RFID
+                        rfidHelper.setTriggerMode(newState)
+                        triggerMode = newState
+                    },
+                )
+            }
+        }
+
+        // Connect Button
+        Button(
+            onClick = {
+                if (connectionState == HoneywellRfidHelper.ConnectionState.DISCONNECTED) {
+                    val success = if (bluetoothAddress.isNotBlank()) {
+                        rfidHelper.connect(bluetoothAddress)
+                    } else {
+                        // Try serial connection (built-in device)
+                        rfidHelper.connectSerial()
+                    }
+                    statusMessage = if (success) "Connecting..." else "Connection failed"
+                } else {
+                    rfidHelper.disconnect()
+                    tagList = emptyList()
+                    isScanning = false
+                    statusMessage = "Disconnected"
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (connectionState == HoneywellRfidHelper.ConnectionState.DISCONNECTED)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.error
+            )
+        ) {
+            Text(
+                if (connectionState == HoneywellRfidHelper.ConnectionState.DISCONNECTED)
+                    "Connect"
+                else
+                    "Disconnect"
+            )
+        }
+
+        // Start Scan Button (only show in manual mode)
+        if (!inventoryModeEnabled) {
             Button(
                 onClick = {
-                    if (connectionState == HoneywellRfidHelper.ConnectionState.DISCONNECTED) {
-                        val success = if (bluetoothAddress.isNotBlank()) {
-                            rfidHelper.connect(bluetoothAddress)
-                        } else {
-                            // Try serial connection (built-in device)
-                            rfidHelper.connectSerial()
+                    if (!isScanning) {
+                        val result = rfidHelper.startScan(
+                            mode = HoneywellRfidHelper.ScanMode.NORMAL
+                        ) { tags ->
+                            tagList = tags
                         }
-                        statusMessage = if (success) "Connecting..." else "Connection failed"
-                    } else {
-                        rfidHelper.disconnect()
-                        tagList = emptyList()
-                        isScanning = false
-                        statusMessage = "Disconnected"
+                        if (result.isEmpty()) {
+                            isScanning = true
+                            statusMessage = "Scanning..."
+                        } else {
+                            statusMessage = result
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = connectionState == HoneywellRfidHelper.ConnectionState.READER_READY && !isScanning
+            ) {
+                Text("Start Scan")
+            }
+
+            // Stop Scan Button
+            Button(
+                onClick = {
+                    rfidHelper.stopScan()
+                    isScanning = false
+                    statusMessage = "Scan stopped. Found ${tagList.size} tags"
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = isScanning,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (connectionState == HoneywellRfidHelper.ConnectionState.DISCONNECTED)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.error
+                    containerColor = MaterialTheme.colorScheme.secondary
                 )
             ) {
-                Text(
-                    if (connectionState == HoneywellRfidHelper.ConnectionState.DISCONNECTED)
-                        "Connect"
-                    else
-                        "Disconnect"
-                )
+                Text("Stop Scan")
             }
-
-            // Start Scan Button (only show in manual mode)
-            if (!inventoryModeEnabled) {
-                Button(
-                    onClick = {
-                        if (!isScanning) {
-                            val result = rfidHelper.startScan(
-                                mode = HoneywellRfidHelper.ScanMode.NORMAL
-                            ) { tags ->
-                                tagList = tags
-                            }
-                            if (result.isEmpty()) {
-                                isScanning = true
-                                statusMessage = "Scanning..."
-                            } else {
-                                statusMessage = result
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = connectionState == HoneywellRfidHelper.ConnectionState.READER_READY && !isScanning
-                ) {
-                    Text("Start Scan")
-                }
-
-                // Stop Scan Button
-                Button(
-                    onClick = {
-                        rfidHelper.stopScan()
-                        isScanning = false
-                        statusMessage = "Scan stopped. Found ${tagList.size} tags"
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = isScanning,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
-                    )
-                ) {
-                    Text("Stop Scan")
-                }
-            } else {
-                // Inventory mode info card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Press and hold the trigger key on your device to scan",
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-
-            // Clear Tags Button
-            if (tagList.isNotEmpty()) {
-                OutlinedButton(
-                    onClick = {
-                        rfidHelper.clearTags()
-                        tagList = emptyList()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Clear Tags")
-                }
-            }
-
-            // Tag List
+        } else {
+            // Inventory mode info card
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
             ) {
-                Column(modifier = Modifier.padding(8.dp)) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
-                        text = "Scanned Tags:",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(8.dp)
+                        text = "Press and hold the trigger key on your device to scan",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center
                     )
-                    HorizontalDivider()
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(tagList) { tag ->
-                            TagItem(tag)
-                        }
+                }
+            }
+        }
+
+        // Clear Tags Button
+        if (tagList.isNotEmpty()) {
+            OutlinedButton(
+                onClick = {
+                    rfidHelper.clearTags()
+                    tagList = emptyList()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Clear Tags")
+            }
+        }
+
+        // Tag List
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text = "Scanned Tags:",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(8.dp)
+                )
+                HorizontalDivider()
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(tagList) { tag ->
+                        TagItem(tag)
                     }
                 }
             }
+        }
     }
 }
 

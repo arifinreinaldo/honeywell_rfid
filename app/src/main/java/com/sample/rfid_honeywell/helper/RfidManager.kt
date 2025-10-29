@@ -260,6 +260,13 @@ class HoneywellRfidHelper private constructor(context: Context) {
         Log.d(TAG, "Target set to: ${if (target == 0) "A" else "B"}")
     }
 
+    fun setTriggerMode(mode: TriggerMode) {
+        rfidManager?.triggerMode = mode
+    }
+
+    fun getTriggerMode(): TriggerMode? {
+        return rfidManager?.triggerMode
+    }
     // ========================================
     // TAG SCANNING/READING
     // ========================================
@@ -275,7 +282,7 @@ class HoneywellRfidHelper private constructor(context: Context) {
         mode: ScanMode = ScanMode.NORMAL,
         additionData: TagAdditionData = TagAdditionData.NONE,
         callback: (List<TagInfo>) -> Unit
-    ):String {
+    ): String {
         if (!isReaderAvailable()) {
             return "Reader not available"
         }
