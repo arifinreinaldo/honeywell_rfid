@@ -20,20 +20,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.sample.rfid_honeywell.helper.BarcodeHelper
 import com.sample.rfid_honeywell.helper.HoneywellRfidHelper
 import com.sample.rfid_honeywell.ui.theme.RFIDHoneywellTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var rfidHelper: HoneywellRfidHelper
-    private var isInitialized = false
+    private lateinit var barcodeHelper: BarcodeHelper
+    private var isRfidInitialized = false
+    private var isBarcodeInitialized = false
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.values.all { it }
         if (allGranted) {
-            initializeRfid()
+            initializeDevices()
         } else {
             Log.e("MainActivity", "Permissions denied")
         }
@@ -44,10 +47,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         rfidHelper = HoneywellRfidHelper.getInstance(this)
+        barcodeHelper = BarcodeHelper.getInstance(this)
 
         setContent {
             RFIDHoneywellTheme {
-                RfidScreen(rfidHelper = rfidHelper)
+                MainScreen(
+                    rfidHelper = rfidHelper,
+                    barcodeHelper = barcodeHelper
+                )
             }
         }
 
@@ -93,16 +100,24 @@ class MainActivity : ComponentActivity() {
         if (permissions.isNotEmpty()) {
             requestPermissionLauncher.launch(permissions.toTypedArray())
         } else {
-            initializeRfid()
+            initializeDevices()
         }
     }
 
-    private fun initializeRfid() {
-        if (!isInitialized) {
-            lifecycleScope.launch {
-                val success = rfidHelper.initialize()
-                isInitialized = success
-                Log.d("MainActivity", "RFID initialized: $success")
+    private fun initializeDevices() {
+        lifecycleScope.launch {
+            // Initialize RFID
+            if (!isRfidInitialized) {
+                val rfidSuccess = rfidHelper.initialize()
+                isRfidInitialized = rfidSuccess
+                Log.d("MainActivity", "RFID initialized: $rfidSuccess")
+            }
+
+            // Initialize Barcode Scanner
+            if (!isBarcodeInitialized) {
+                val barcodeSuccess = barcodeHelper.initialize()
+                isBarcodeInitialized = barcodeSuccess
+                Log.d("MainActivity", "Barcode scanner initialized: $barcodeSuccess")
             }
         }
     }
@@ -110,7 +125,84 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         rfidHelper.cleanup()
+        barcodeHelper.cleanup()
     }
+}
+
+@Composable
+fun MainScreen(rfidHelper: HoneywellRfidHelper, barcodeHelper: BarcodeHelper) {
+    var scanMode by remember { mutableStateOf(ScanMode.RFID) }
+
+    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Title
+            Text(
+                text = "Honeywell Scanner",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            // Mode Selector
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Button(
+                        onClick = { scanMode = ScanMode.RFID },
+                        modifier = Modifier.weight(1f).padding(4.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (scanMode == ScanMode.RFID)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Text("RFID Mode")
+                    }
+
+                    Button(
+                        onClick = { scanMode = ScanMode.BARCODE },
+                        modifier = Modifier.weight(1f).padding(4.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (scanMode == ScanMode.BARCODE)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Text("Barcode Mode")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Display appropriate screen based on mode
+            when (scanMode) {
+                ScanMode.RFID -> RfidScreen(rfidHelper = rfidHelper)
+                ScanMode.BARCODE -> BarcodeScreen(barcodeHelper = barcodeHelper)
+            }
+        }
+    }
+}
+
+enum class ScanMode {
+    RFID,
+    BARCODE
 }
 
 @Composable
@@ -153,21 +245,12 @@ fun RfidScreen(rfidHelper: HoneywellRfidHelper) {
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Title
-            Text(
-                text = "RFID Honeywell Scanner",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+    Column(
+        modifier = Modifier
+            .fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
 
             // Status
             Card(
@@ -375,6 +458,189 @@ fun RfidScreen(rfidHelper: HoneywellRfidHelper) {
                     }
                 }
             }
+    }
+}
+
+@Composable
+fun BarcodeScreen(barcodeHelper: BarcodeHelper) {
+    var scannerState by remember { mutableStateOf(BarcodeHelper.ScannerState.DISCONNECTED) }
+    var barcodeList by remember { mutableStateOf<List<BarcodeHelper.BarcodeData>>(emptyList()) }
+    var statusMessage by remember { mutableStateOf("Ready") }
+    var triggerModeEnabled by remember { mutableStateOf(false) }
+
+    // Set up scanner state listener
+    LaunchedEffect(Unit) {
+        barcodeHelper.setScannerStateListener { state ->
+            scannerState = state
+            statusMessage = when (state) {
+                BarcodeHelper.ScannerState.DISCONNECTED -> "Scanner not ready"
+                BarcodeHelper.ScannerState.READY -> "Scanner ready"
+                BarcodeHelper.ScannerState.SCANNING -> "Ready to scan - Press trigger"
+            }
+        }
+
+        // Set up barcode scan listener
+        barcodeHelper.setBarcodeListener { barcode ->
+            barcodeList = barcodeHelper.getAllBarcodes()
+        }
+    }
+
+    // Handle trigger mode toggle
+    LaunchedEffect(triggerModeEnabled) {
+        barcodeHelper.setTriggerMode(triggerModeEnabled)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Status
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = when (scannerState) {
+                    BarcodeHelper.ScannerState.SCANNING -> MaterialTheme.colorScheme.primaryContainer
+                    BarcodeHelper.ScannerState.READY -> MaterialTheme.colorScheme.secondaryContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Status: $statusMessage")
+                Text("Scanner: ${scannerState.name}")
+                Text("Mode: ${if (triggerModeEnabled) "Trigger Enabled" else "Trigger Disabled"}")
+                Text("Barcodes scanned: ${barcodeList.size}")
+            }
+        }
+
+        // Trigger Mode Toggle
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (triggerModeEnabled)
+                    MaterialTheme.colorScheme.tertiaryContainer
+                else
+                    MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Hardware Trigger",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = if (triggerModeEnabled)
+                            "Press trigger key to scan"
+                        else
+                            "Enable to use hardware trigger",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = triggerModeEnabled,
+                    onCheckedChange = {
+                        triggerModeEnabled = it
+                        if (it) {
+                            statusMessage = "Press trigger to scan barcodes"
+                        } else {
+                            statusMessage = "Trigger disabled"
+                        }
+                    },
+                    enabled = scannerState != BarcodeHelper.ScannerState.DISCONNECTED
+                )
+            }
+        }
+
+        // Software Trigger Buttons (when trigger mode is disabled)
+        if (!triggerModeEnabled) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { barcodeHelper.softwareTrigger(true) },
+                    modifier = Modifier.weight(1f),
+                    enabled = scannerState == BarcodeHelper.ScannerState.READY
+                ) {
+                    Text("Start Scan")
+                }
+
+                Button(
+                    onClick = { barcodeHelper.softwareTrigger(false) },
+                    modifier = Modifier.weight(1f),
+                    enabled = scannerState == BarcodeHelper.ScannerState.READY,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Text("Stop Scan")
+                }
+            }
+        } else {
+            // Info card for trigger mode
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Press and hold the trigger key on your device to scan barcodes",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        // Clear Barcodes Button
+        if (barcodeList.isNotEmpty()) {
+            OutlinedButton(
+                onClick = {
+                    barcodeHelper.clearBarcodes()
+                    barcodeList = emptyList()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Clear Barcodes")
+            }
+        }
+
+        // Barcode List
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text = "Scanned Barcodes:",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(8.dp)
+                )
+                HorizontalDivider()
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(barcodeList) { barcode ->
+                        BarcodeItem(barcode)
+                    }
+                }
+            }
         }
     }
 }
@@ -407,6 +673,40 @@ fun TagItem(tag: HoneywellRfidHelper.TagInfo) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun BarcodeItem(barcode: BarcodeHelper.BarcodeData) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Data: ${barcode.data}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Type: ${barcode.getSymbologyName()}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    text = "Count: ${barcode.count}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Text(
+                text = "Timestamp: ${barcode.timestamp}",
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }

@@ -4,7 +4,15 @@
       "Bash(gradlew.bat build:*)",
       "Bash(\"./gradlew.bat\" build --stacktrace)",
       "Bash(\"./gradlew.bat\" clean build)",
-      "Bash(\"./gradlew.bat\" build)"
+      "Bash(\"./gradlew.bat\" build)",
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(unzip:*)",
+      "Bash(javap:*)",
+      "Bash(jar -tf:*)",
+      "Bash(jar -xf:*)",
+      "Read(//c/Users/Reinaldo/AndroidStudioProjects/**)"
     ],
     "deny": [],
     "ask": []

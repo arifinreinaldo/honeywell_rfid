@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an Android application for interfacing with Honeywell RFID scanners (specifically the IH45 module). The app uses Jetpack Compose for UI and integrates with the Honeywell RFID SDK to scan RFID tags via Bluetooth or serial connection.
+This is an Android application for interfacing with Honeywell RFID scanners (specifically the IH45 module) and barcode scanners. The app uses Jetpack Compose for UI and integrates with:
+- Honeywell RFID SDK for RFID tag scanning via Bluetooth or serial connection
+- Honeywell AIDC SDK (DataCollection.aar) for barcode scanning with hardware trigger support
+
+The app features a dual-mode interface allowing users to switch between RFID scanning and barcode scanning modes.
 
 ## Build Commands
 
@@ -43,39 +47,61 @@ gradlew.bat connectedAndroidTest
   - Tag read/write/lock operations
   - Event callbacks for connection state and tag reads
 
+**BarcodeHelper (Singleton)**
+- Location: `app/src/main/java/com/sample/rfid_honeywell/helper/BarcodeHelper.kt`
+- Centralized manager for all barcode scanning operations
+- Uses Honeywell AIDC (AidcManager and BarcodeReader APIs)
+- Key responsibilities:
+  - Scanner initialization and claiming
+  - Hardware trigger event handling
+  - Software trigger control
+  - Barcode read event callbacks
+  - Support for all major symbologies (Code 128, QR, Data Matrix, UPC, EAN, PDF417, etc.)
+
 **MainActivity**
 - Location: `app/src/main/java/com/sample/rfid_honeywell/MainActivity.kt`
 - Handles runtime permissions (Bluetooth, Location)
-- Manages RFID helper lifecycle
-- Hosts the Compose UI
+- Manages both RFID and Barcode helper lifecycles
+- Hosts the Compose UI with mode switching
 
-### RFID Scanning Modes
+### Application Modes
 
-The app supports two scanning paradigms:
+The app supports two primary scanning modes accessible via the mode selector:
 
-1. **Manual Mode**: User-initiated scanning with Start/Stop buttons
-2. **Inventory Mode**: Hardware trigger-based scanning (press device trigger to scan)
+**1. RFID Mode**
+- Scans RFID tags using the Honeywell RFID SDK
+- Two scanning paradigms:
+  - **Manual Mode**: User-initiated scanning with Start/Stop buttons
+  - **Inventory Mode**: Hardware trigger-based scanning (press device trigger to scan)
+- Connection states: `DISCONNECTED` → `CONNECTED` → `READER_READY`
+- After reaching `CONNECTED`, the app automatically creates the reader (with 1-second delay)
 
-### Connection States
-
-The RFID system transitions through these states:
-- `DISCONNECTED` → `CONNECTED` → `READER_READY`
-
-After reaching `CONNECTED`, the app automatically creates the reader (with 1-second delay) to reach `READER_READY` state.
+**2. Barcode Mode**
+- Scans 1D/2D barcodes using the Honeywell AIDC SDK
+- Hardware trigger support for hands-free scanning
+- Software trigger option for programmatic control
+- Scanner states: `DISCONNECTED` → `READY` → `SCANNING`
+- Automatically initializes and claims the scanner on app start
 
 ## Dependencies
 
 ### External SDKs
 
 The project requires two Honeywell SDK AAR files (not included in repo):
-- `honeywell_rfid_sdk.aar`
-- `DataCollection.aar`
+- `honeywell_rfid_sdk.aar` - RFID tag reading functionality
+- `DataCollection.aar` - Barcode scanning functionality (AIDC library)
 
 These should be placed in `app/libs/` directory. The build.gradle.kts references them as:
 ```kotlin
 implementation(files("libs/honeywell_rfid_sdk.aar"))
 implementation(files("libs/DataCollection.aar"))
 ```
+
+**DataCollection.aar API Overview:**
+- Package: `com.honeywell.aidc`
+- Main classes: `AidcManager`, `BarcodeReader`
+- Event classes: `BarcodeReadEvent`, `TriggerStateChangeEvent`
+- Supports 50+ barcode symbologies including Code 128, QR Code, Data Matrix, PDF417, UPC, EAN
 
 ### Key Libraries
 
@@ -126,9 +152,10 @@ This app requires actual Honeywell RFID hardware. Common test scenarios:
 
 ```
 com.sample.rfid_honeywell/
-├── MainActivity.kt           # Main activity and Compose UI
+├── MainActivity.kt           # Main activity, MainScreen, RfidScreen, BarcodeScreen composables
 ├── helper/
-│   └── RfidManager.kt       # HoneywellRfidHelper singleton
+│   ├── RfidManager.kt       # HoneywellRfidHelper singleton (RFID operations)
+│   └── BarcodeHelper.kt     # BarcodeHelper singleton (Barcode operations)
 └── ui/theme/                # Compose theme files
     ├── Color.kt
     ├── Theme.kt
@@ -137,7 +164,9 @@ com.sample.rfid_honeywell/
 
 ## Common Operations
 
-### Connect to Device
+### RFID Operations
+
+**Connect to Device**
 ```kotlin
 // Bluetooth
 rfidHelper.connect("0C:23:69:19:AB:FB")
@@ -146,7 +175,7 @@ rfidHelper.connect("0C:23:69:19:AB:FB")
 rfidHelper.connectSerial()
 ```
 
-### Scan Tags
+**Scan Tags**
 ```kotlin
 // Start scanning
 rfidHelper.startScan(mode = ScanMode.NORMAL) { tags ->
@@ -157,9 +186,50 @@ rfidHelper.startScan(mode = ScanMode.NORMAL) { tags ->
 rfidHelper.stopScan()
 ```
 
-### Enable Inventory Mode
+**Enable Inventory Mode**
 ```kotlin
 rfidHelper.setInventoryMode(true) { tags ->
     // Called when trigger is pressed
+}
+```
+
+### Barcode Operations
+
+**Initialize Barcode Scanner**
+```kotlin
+lifecycleScope.launch {
+    val success = barcodeHelper.initialize()
+    if (success) {
+        // Scanner ready
+    }
+}
+```
+
+**Enable Hardware Trigger**
+```kotlin
+// Enable trigger mode
+barcodeHelper.setTriggerMode(true)
+
+// Listen for scans
+barcodeHelper.setBarcodeListener { barcode ->
+    Log.d("Barcode", "Scanned: ${barcode.data}")
+    Log.d("Type", "Type: ${barcode.getSymbologyName()}")
+}
+```
+
+**Software Trigger**
+```kotlin
+// Start scan
+barcodeHelper.softwareTrigger(true)
+
+// Stop scan
+barcodeHelper.softwareTrigger(false)
+```
+
+**Get All Scanned Barcodes**
+```kotlin
+val barcodes = barcodeHelper.getAllBarcodes()
+barcodes.forEach { barcode ->
+    println("${barcode.data} - ${barcode.getSymbologyName()}")
 }
 ```
