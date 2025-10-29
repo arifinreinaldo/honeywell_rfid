@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gradlew.bat build:*)",
+      "Bash(\"./gradlew.bat\" build --stacktrace)",
+      "Bash(\"./gradlew.bat\" clean build)",
+      "Bash(\"./gradlew.bat\" build)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
